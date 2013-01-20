@@ -71,6 +71,12 @@ class Port(models.Model):
         self.full_clean()
         super(Port, self).save()
 
+class ServerOwnerManager(models.Manager):
+    def for_user(self, user):
+        """can be changed for 'many owners' logic later"""
+        return self.get_query_set().filter(
+            Q(owner=user)
+        )
 
 class Server(models.Model):
     owner = models.ForeignKey(User, related_name='servers')
@@ -80,18 +86,23 @@ class Server(models.Model):
     is_active = models.BooleanField(default=False)
     online = models.BooleanField(default=False)
 
+    by_owner = ServerOwnerManager()
+
     @property
     def is_online(self):
         if self.port and self.port.is_active and self.online:
             return True
         return False
 
-    @property
-    def info(self):
+    def is_owned_by(self, user):
+        '''Check if user is owner
+            Can be easy replased by #25 issue'''
+        return self.owner == user
+
+    def get_info(self):
         if self.is_online and self.check_online():
-            s = ServerInfo()
-            s.send(self.port.port)
-            return s
+            s = ServerInfo(self)
+            return s.get_data()
         return None
 
     @property

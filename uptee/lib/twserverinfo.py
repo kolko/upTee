@@ -43,17 +43,19 @@ class ServerInfo:
 
     SERVERINFO_FLAG_PASSWORD = 0x1
 
-    def __init__(self):
+    def __init__(self, server):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind(('127.0.0.1', 0))
         self.compressed_data = True
         self.data = ''
         self.server_info = {}
+        self.server = server
+        self.port = server.port.port
 
-    def send(self, port=8300):
+    def send(self):
         data = '\xff\xff\xff\xff\xff\xff\xff\xff\xff\xffgie3\x01'
         try:
-            address = ('127.0.0.1', port)
+            address = ('127.0.0.1', self.port)
             self.sock.sendto(data, address)
             self.data, recv_address = self.sock.recvfrom(2048)
             if address == recv_address:
@@ -130,6 +132,11 @@ class ServerInfo:
         # sort specs by name
         spectators = sorted(spectators, key=lambda k: k['name'])
         self.server_info['spectators'] = spectators
+
+    def get_data(self):
+        if not self.server_info:
+            self.send()
+        return self.server_info
 
     @property
     def password(self):

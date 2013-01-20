@@ -16,7 +16,7 @@ from settings import MEDIA_ROOT
 def server_list(request, username=None, server_status=None):
     if username:
         user = get_object_or_404(User.objects.filter(is_active=True), username=username)
-        servers = Server.objects.filter(is_active=True, owner=user)
+        servers = Server.by_owner.for_user(user).filter(is_active=True)
     else:
         servers = Server.objects.filter(is_active=True)
     if server_status:
@@ -36,7 +36,7 @@ def server_detail(request, server_id):
 
 @login_required
 def server_edit(request, server_id):
-    server = get_object_or_404(Server.objects.select_related().filter(is_active=True, owner=request.user), pk=server_id)
+    server = get_object_or_404(Server.by_owner.for_user(request.user).select_related().filter(is_active=True), pk=server_id)
     options = server.config_options.all()
     return render_to_response('mod/server_detail_edit.html', {
         'server': server,
@@ -46,7 +46,7 @@ def server_edit(request, server_id):
 
 @login_required
 def upload_map(request, server_id):
-    server = get_object_or_404(Server.objects.select_related().filter(is_active=True, owner=request.user), pk=server_id)
+    server = get_object_or_404(Server.by_owner.for_user(request.user).select_related().filter(is_active=True), pk=server_id)
     if request.method == 'POST':
         form = MapUploadForm(request.POST, request.FILES)
         if form.is_valid():
@@ -73,7 +73,7 @@ def map_download(request, map_id):
     password = map_obj.server.config_options.filter(command='password')
     if password:
         password = password[0].value
-    if request.user != map_obj.server.owner and password:
+    if (not map_obj.server.is_owned_by(request.user)) and password:
         raise Http404
     map_path = map_obj.get_download_url()
     if not map_path:
@@ -98,7 +98,7 @@ def map_details(request, map_id):
 @require_POST
 def delete_map(request, map_id):
     map_obj = get_object_or_404(Map, pk=map_id)
-    if map_obj.server.owner != request.user:
+    if not map_obj.server.is_owned_by(request.user):
         raise Http404
     next = request.REQUEST.get('next', reverse('server_detail', kwargs={'server_id': map_obj.server.id}))
     map_obj.delete()
@@ -107,7 +107,7 @@ def delete_map(request, map_id):
 
 @login_required
 def server_votes(request, server_id):
-    server = get_object_or_404(Server.objects.select_related().filter(is_active=True, owner=request.user), pk=server_id)
+    server = get_object_or_404(Server.by_owner.for_user(request.user).select_related().filter(is_active=True), pk=server_id)
     if request.method == 'POST':
         vote = Vote(server=server, command='command', title='New vote')
         vote.save()
@@ -120,7 +120,7 @@ def server_votes(request, server_id):
 
 @login_required
 def server_tunes(request, server_id):
-    server = get_object_or_404(Server.objects.select_related().filter(is_active=True, owner=request.user), pk=server_id)
+    server = get_object_or_404(Server.by_owner.for_user(request.user).select_related().filter(is_active=True), pk=server_id)
     tunes = server.config_tunes.all()
     if not tunes:
         raise Http404
@@ -135,7 +135,7 @@ def server_tunes(request, server_id):
 def start_stop_server(request, server_id):
     server = get_object_or_404(Server.objects.select_related().filter(is_active=True), pk=server_id)
     user = request.user
-    if not user.is_staff and server.owner != user:
+    if not user.is_staff and (not server.is_owned_by(user)):
         raise Http404
     next = request.REQUEST.get('next', reverse('user_server_list', kwargs={'username': server.owner.username}))
     map_exists = True
@@ -154,7 +154,7 @@ def start_stop_server(request, server_id):
 @require_POST
 def update_settings(request, server_id):
     server = get_object_or_404(Server.objects.select_related().filter(is_active=True), pk=server_id)
-    if server.owner != request.user:
+    if not server.is_owned_by(request.user):
         raise Http404
     next = request.REQUEST.get('next', reverse('server_edit', kwargs={'server_id': server.id}))
     options = server.config_options.exclude(widget=Option.WIDGET_CHECKBOX)
@@ -180,7 +180,7 @@ def update_settings(request, server_id):
 @require_POST
 def update_votes(request, server_id):
     server = get_object_or_404(Server.objects.select_related().filter(is_active=True), pk=server_id)
-    if server.owner != request.user:
+    if not server.is_owned_by(request.user):
         raise Http404
     next = request.REQUEST.get('next', reverse('server_votes', kwargs={'server_id': server.id}))
     votes = server.config_votes.all()
@@ -250,7 +250,7 @@ def update_votes(request, server_id):
 @require_POST
 def update_tunes(request, server_id):
     server = get_object_or_404(Server.objects.select_related().filter(is_active=True), pk=server_id)
-    if server.owner != request.user:
+    if not server.is_owned_by(request.user):
         raise Http404
     next = request.REQUEST.get('next', reverse('server_tunes', kwargs={'server_id': server.id}))
     tunes = server.config_tunes.all()
@@ -268,10 +268,6 @@ def update_tunes(request, server_id):
 
 @ajax_request
 def server_info_update_ajax(request, server_id):
-    if not request.is_ajax():
-        raise Http404
     server = get_object_or_404(Server.objects.select_related().filter(is_active=True), pk=server_id)
-    server_info = server.info
-    if server_info:
-        server_info = server.info.server_info
+    server_info = server.get_info()
     return {'server_info': server_info}
