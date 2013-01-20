@@ -78,10 +78,11 @@ class Server(models.Model):
     pid = models.IntegerField(blank=True, null=True, unique=True)
     port = models.OneToOneField(Port, blank=True, null=True, related_name='server')
     is_active = models.BooleanField(default=False)
+    online = models.BooleanField(default=False)
 
     @property
     def is_online(self):
-        if self.port and self.port.is_active:
+        if self.port and self.port.is_active and self.online:
             return True
         return False
 
@@ -110,6 +111,9 @@ class Server(models.Model):
 
     def check_online(self):
         if self.pid in psutil.get_pid_list():
+            if not self.online:
+                self.online = True
+                self.save()
             return True
         self.set_offline()
         return False
@@ -122,6 +126,7 @@ class Server(models.Model):
         if self.pid in psutil.get_pid_list():
             os.kill(self.pid, signal.SIGTERM)
         self.pid = None
+        self.online = False
         self.save()
 
     def set_online(self):
